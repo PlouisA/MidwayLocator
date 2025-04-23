@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Equidistant Point Calculator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    #map { height: 500px; width: 100%; margin-top: 1rem; }
+    input { margin: 0.5rem 0; width: 100%; padding: 0.5rem; }
+    .autocomplete-container { position: relative; }
+    .autocomplete-results {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      z-index: 1000;
+      max-height: 150px;
+      overflow-y: auto;
+      width: 100%;
+    }
+    .autocomplete-item {
+      padding: 0.5rem;
+      cursor: pointer;
+    }
+    .autocomplete-item:hover {
+      background: #eee;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      margin-top: 1rem;
+    }
+
+    /* GitHub link at bottom-right */
+    #github-link {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      font-size: 14px;
+      background-color: #333;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 5px;
+      text-decoration: none;
+    }
+    #github-link:hover {
+      background-color: #555;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Equidistant Point Calculator</h1>
+
+  <div class="autocomplete-container">
+    <input type="text" id="address1" placeholder="Address 1" autocomplete="off">
+    <div id="suggestions1" class="autocomplete-results"></div>
+  </div>
+
+  <input type="text" id="address2" placeholder="Address 2">
+  <input type="text" id="address3" placeholder="Address 3">
+
+  <button onclick="calculateEquidistantPoint()">Calculate</button>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <script>
+    // Initialize the map with a default center and zoom level
+    const map = L.map('map').setView([48.8566, 2.3522], 5);
+
+    // Add OpenStreetMap tile layer to the map
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Function to geocode an address (convert address to latitude/longitude)
+    function geocodeAddress(address) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
+      return fetch(url, { headers: { 'User-Agent': 'test' } })
+        .then(res => res.json())
+        .then(data => {
+          if (data.length > 0) {
+            const lat = parseFloat(data[0].lat);
+            const lon = parseFloat(data[0].lon);
+            return { lat, lon };
+          } else {
+            throw new Error("Address not found");
+          }
+        });
+    }
+
+    // Function to calculate the equidistant point from multiple addresses
+    function calculateEquidistantPoint() {
+      const addresses = [
+        document.getElementById("address1").value,
+        document.getElementById("address2").value,
+        document.getElementById("address3").value
+      ].filter(a => a.trim() !== "");
+
+      if (addresses.length < 2) {
+        alert("Please enter at least two addresses!");
+        return;
+      }
+
+      // Remove all previous markers from the map
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker) map.removeLayer(layer);
+      });
+
+      // Geocode all the addresses and place markers on the map
+      Promise.all(addresses.map(geocodeAddress))
+        .then(coords => {
+          coords.forEach((coord, i) => {
+            L.marker([coord.lat, coord.lon])
+              .addTo(map)
+              .bindPopup(`Address ${i + 1}`)
+              .openPopup();
+          });
+
+          // Calculate the average latitude and longitude (equidistant point)
+          const averageLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
+          const averageLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
+
+          // Place a marker at the equidistant point
+          const centerPoint = L.marker([averageLat, averageLon], {
+            icon: L.icon({
+              iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+              iconSize: [25, 25]
+            })
+          })
+          .addTo(map)
+          .bindPopup("Equidistant Point")
+          .openPopup();
+
+          // Center and zoom the map to the equidistant point
+          map.setView([averageLat, averageLon], 7);
+        })
+        .catch(err => {
+          alert("Geocoding error: " + err.message);
+        });
+    }
+
+    // Autocomplete functionality for the address input field
+    const input = document.getElementById("address1");
+    const suggestions = document.getElementById("suggestions1");
+
+    input.addEventListener("input", () => {
+      const query = input.value.trim();
+      if (query.length < 3) {
+        suggestions.innerHTML = '';
+        return;
+      }
+
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
+        .then(res => res.json())
+        .then(results => {
+          suggestions.innerHTML = '';
+          results.forEach(place => {
+            const div = document.createElement("div");
+            div.classList.add("autocomplete-item");
+            div.textContent = place.display_name;
+            div.addEventListener("click", () => {
+              input.value = place.display_name;
+              suggestions.innerHTML = '';
+            });
+            suggestions.appendChild(div);
+          });
+        });
+    });
+
+    // Close autocomplete suggestions when clicking outside the input
+    document.addEventListener("click", (e) => {
+      if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+        suggestions.innerHTML = '';
+      }
+    });
+  </script>
+
+  <!-- GitHub link at the bottom-right -->
+  <a id="github-link" href="https://github.com/PlouisA/MidwayLocator" target="_blank">GitHub</a>
+
+</body>
+</html>
