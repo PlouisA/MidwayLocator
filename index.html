@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Equidistant Point Calculator</title>
+  <title>Midway Locator</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
   <style>
     body { font-family: sans-serif; padding: 1rem; }
     #map { height: 500px; width: 100%; margin-top: 1rem; }
-    input { margin: 0.5rem 0; width: 100%; padding: 0.5rem; }
+    .address-group { position: relative; margin-bottom: 1rem; }
     .autocomplete-container { position: relative; }
     .autocomplete-results {
       position: absolute;
@@ -28,10 +28,9 @@
     }
     button {
       padding: 0.5rem 1rem;
-      margin-top: 1rem;
+      margin-right: 0.5rem;
     }
 
-    /* GitHub link at bottom-right */
     #github-link {
       position: fixed;
       bottom: 10px;
@@ -50,37 +49,37 @@
 </head>
 <body>
 
-  <!-- Page title -->
-  <h1>Equidistant Point Calculator</h1>
+  <h1>Midway Locator</h1>
 
-  <!-- Address input fields -->
-  <div class="autocomplete-container">
-    <input type="text" id="address1" placeholder="Address 1" autocomplete="off">
-    <div id="suggestions1" class="autocomplete-results"></div>
+  <div id="addressContainer">
+    <div class="address-group" id="group1">
+      <input type="text" id="address1" placeholder="Address 1" autocomplete="off">
+      <div id="suggestions1" class="autocomplete-results"></div>
+    </div>
+
+    <div class="address-group" id="group2">
+      <input type="text" id="address2" placeholder="Address 2" autocomplete="off">
+      <div id="suggestions2" class="autocomplete-results"></div>
+    </div>
   </div>
 
-  <input type="text" id="address2" placeholder="Address 2">
-  <input type="text" id="address3" placeholder="Address 3">
-
-  <!-- Calculate button -->
+  <button id="addAddressBtn">Add Address</button>
+  <button id="removeAddressBtn" style="display:none;">Remove Address</button>
   <button onclick="calculateEquidistantPoint()">Calculate</button>
 
-  <!-- Map container -->
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <script>
-    // Initialize map centered on France by default
+    let currentAddressCount = 2;
+
     const map = L.map('map').setView([48.8566, 2.3522], 5);
 
-    // Add OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Function to geocode an address using Nominatim API
     function geocodeAddress(address) {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
       return fetch(url, { headers: { 'User-Agent': 'test' } })
@@ -94,57 +93,40 @@
         });
     }
 
-    // Calculate the equidistant point and display on map
     function calculateEquidistantPoint() {
-      const addresses = [
-        document.getElementById("address1").value,
-        document.getElementById("address2").value,
-        document.getElementById("address3").value
-      ].filter(a => a.trim() !== "");
+      const addressInputs = document.querySelectorAll("#addressContainer input");
+      const addresses = Array.from(addressInputs).map(i => i.value).filter(a => a.trim() !== "");
 
       if (addresses.length < 2) {
         alert("Please enter at least two addresses!");
         return;
       }
 
-      // Remove existing markers from map
       map.eachLayer(layer => {
         if (layer instanceof L.Marker) map.removeLayer(layer);
       });
 
-      // Geocode all addresses and calculate the center point
       Promise.all(addresses.map(geocodeAddress))
         .then(coords => {
           coords.forEach((coord, i) => {
-            L.marker([coord.lat, coord.lon])
-              .addTo(map)
-              .bindPopup(`Address ${i + 1}`)
-              .openPopup();
+            L.marker([coord.lat, coord.lon]).addTo(map).bindPopup(`Address ${i + 1}`).openPopup();
           });
 
-          // Calculate average latitude and longitude
           const avgLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
           const avgLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
 
-          // Display the equidistant point on the map
           L.marker([avgLat, avgLon], {
             icon: L.icon({
               iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
               iconSize: [25, 25]
             })
-          }).addTo(map)
-            .bindPopup("Equidistant Point")
-            .openPopup();
+          }).addTo(map).bindPopup("Equidistant Point").openPopup();
 
-          // Center the map on the equidistant point
           map.setView([avgLat, avgLon], 7);
         })
-        .catch(err => {
-          alert("Geocoding error: " + err.message);
-        });
+        .catch(err => alert("Geocoding error: " + err.message));
     }
 
-    // Debounce function to limit the frequency of API calls
     function debounce(func, delay) {
       let timeoutId;
       return (...args) => {
@@ -155,40 +137,75 @@
       };
     }
 
-    // Function to fetch autocomplete suggestions
-    function fetchAutocompleteSuggestions() {
-      const query = input.value.trim();
-      if (query.length < 3) {
-        suggestions.innerHTML = '';
-        return;
+    function setupAutocomplete(inputId, suggestionsId) {
+      const input = document.getElementById(inputId);
+      const suggestions = document.getElementById(suggestionsId);
+
+      function fetchAutocompleteSuggestions() {
+        const query = input.value.trim();
+        if (query.length < 3) {
+          suggestions.innerHTML = '';
+          return;
+        }
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
+          .then(res => res.json())
+          .then(results => {
+            suggestions.innerHTML = '';
+            results.forEach(place => {
+              const div = document.createElement("div");
+              div.classList.add("autocomplete-item");
+              div.textContent = place.display_name;
+              div.addEventListener("click", () => {
+                input.value = place.display_name;
+                suggestions.innerHTML = '';
+              });
+              suggestions.appendChild(div);
+            });
+          });
       }
 
-      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
-        .then(res => res.json())
-        .then(results => {
+      input.addEventListener("input", debounce(fetchAutocompleteSuggestions, 1000));
+      document.addEventListener("click", (e) => {
+        if (!input.contains(e.target) && !suggestions.contains(e.target)) {
           suggestions.innerHTML = '';
-          results.forEach(place => {
-            const div = document.createElement("div");
-            div.classList.add("autocomplete-item");
-            div.textContent = place.display_name;
-            div.addEventListener("click", () => {
-              input.value = place.display_name;
-              suggestions.innerHTML = '';
-            });
-            suggestions.appendChild(div);
-          });
-        });
+        }
+      });
     }
 
-    // Set up event listener with debounce for address1 input
-    const input = document.getElementById("address1");
-    const suggestions = document.getElementById("suggestions1");
-    input.addEventListener("input", debounce(fetchAutocompleteSuggestions, 1000));
+    // Setup initial autocompletion for first two addresses
+    setupAutocomplete("address1", "suggestions1");
+    setupAutocomplete("address2", "suggestions2");
 
-    // Close suggestions when clicking outside
-    document.addEventListener("click", (e) => {
-      if (!input.contains(e.target) && !suggestions.contains(e.target)) {
-        suggestions.innerHTML = '';
+    document.getElementById("addAddressBtn").addEventListener("click", () => {
+      if (currentAddressCount >= 5) return;
+
+      currentAddressCount++;
+      const group = document.createElement("div");
+      group.className = "address-group";
+      group.id = `group${currentAddressCount}`;
+      group.innerHTML = `
+        <input type="text" id="address${currentAddressCount}" placeholder="Address ${currentAddressCount}" autocomplete="off">
+        <div id="suggestions${currentAddressCount}" class="autocomplete-results"></div>
+      `;
+      document.getElementById("addressContainer").appendChild(group);
+
+      setupAutocomplete(`address${currentAddressCount}`, `suggestions${currentAddressCount}`);
+
+      if (currentAddressCount >= 3) {
+        document.getElementById("removeAddressBtn").style.display = "inline-block";
+      }
+    });
+
+    document.getElementById("removeAddressBtn").addEventListener("click", () => {
+      if (currentAddressCount <= 2) return;
+
+      const group = document.getElementById(`group${currentAddressCount}`);
+      group.remove();
+      currentAddressCount--;
+
+      if (currentAddressCount < 3) {
+        document.getElementById("removeAddressBtn").style.display = "none";
       }
     });
   </script>
