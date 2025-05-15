@@ -50,8 +50,10 @@
 </head>
 <body>
 
+  <!-- Page title -->
   <h1>Equidistant Point Calculator</h1>
 
+  <!-- Address input fields -->
   <div class="autocomplete-container">
     <input type="text" id="address1" placeholder="Address 1" autocomplete="off">
     <div id="suggestions1" class="autocomplete-results"></div>
@@ -60,38 +62,39 @@
   <input type="text" id="address2" placeholder="Address 2">
   <input type="text" id="address3" placeholder="Address 3">
 
+  <!-- Calculate button -->
   <button onclick="calculateEquidistantPoint()">Calculate</button>
 
+  <!-- Map container -->
   <div id="map"></div>
 
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <script>
-    // Initialize the map with a default center and zoom level
+    // Initialize map centered on France by default
     const map = L.map('map').setView([48.8566, 2.3522], 5);
 
-    // Add OpenStreetMap tile layer to the map
+    // Add OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Function to geocode an address (convert address to latitude/longitude)
+    // Function to geocode an address using Nominatim API
     function geocodeAddress(address) {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
       return fetch(url, { headers: { 'User-Agent': 'test' } })
         .then(res => res.json())
         .then(data => {
           if (data.length > 0) {
-            const lat = parseFloat(data[0].lat);
-            const lon = parseFloat(data[0].lon);
-            return { lat, lon };
+            return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
           } else {
             throw new Error("Address not found");
           }
         });
     }
 
-    // Function to calculate the equidistant point from multiple addresses
+    // Calculate the equidistant point and display on map
     function calculateEquidistantPoint() {
       const addresses = [
         document.getElementById("address1").value,
@@ -104,12 +107,12 @@
         return;
       }
 
-      // Remove all previous markers from the map
+      // Remove existing markers from map
       map.eachLayer(layer => {
         if (layer instanceof L.Marker) map.removeLayer(layer);
       });
 
-      // Geocode all the addresses and place markers on the map
+      // Geocode all addresses and calculate the center point
       Promise.all(addresses.map(geocodeAddress))
         .then(coords => {
           coords.forEach((coord, i) => {
@@ -119,34 +122,41 @@
               .openPopup();
           });
 
-          // Calculate the average latitude and longitude (equidistant point)
-          const averageLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
-          const averageLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
+          // Calculate average latitude and longitude
+          const avgLat = coords.reduce((sum, c) => sum + c.lat, 0) / coords.length;
+          const avgLon = coords.reduce((sum, c) => sum + c.lon, 0) / coords.length;
 
-          // Place a marker at the equidistant point
-          const centerPoint = L.marker([averageLat, averageLon], {
+          // Display the equidistant point on the map
+          L.marker([avgLat, avgLon], {
             icon: L.icon({
               iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
               iconSize: [25, 25]
             })
-          })
-          .addTo(map)
-          .bindPopup("Equidistant Point")
-          .openPopup();
+          }).addTo(map)
+            .bindPopup("Equidistant Point")
+            .openPopup();
 
-          // Center and zoom the map to the equidistant point
-          map.setView([averageLat, averageLon], 7);
+          // Center the map on the equidistant point
+          map.setView([avgLat, avgLon], 7);
         })
         .catch(err => {
           alert("Geocoding error: " + err.message);
         });
     }
 
-    // Autocomplete functionality for the address input field
-    const input = document.getElementById("address1");
-    const suggestions = document.getElementById("suggestions1");
+    // Debounce function to limit the frequency of API calls
+    function debounce(func, delay) {
+      let timeoutId;
+      return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          func.apply(this, args);
+        }, delay);
+      };
+    }
 
-    input.addEventListener("input", () => {
+    // Function to fetch autocomplete suggestions
+    function fetchAutocompleteSuggestions() {
       const query = input.value.trim();
       if (query.length < 3) {
         suggestions.innerHTML = '';
@@ -168,9 +178,14 @@
             suggestions.appendChild(div);
           });
         });
-    });
+    }
 
-    // Close autocomplete suggestions when clicking outside the input
+    // Set up event listener with debounce for address1 input
+    const input = document.getElementById("address1");
+    const suggestions = document.getElementById("suggestions1");
+    input.addEventListener("input", debounce(fetchAutocompleteSuggestions, 1000));
+
+    // Close suggestions when clicking outside
     document.addEventListener("click", (e) => {
       if (!input.contains(e.target) && !suggestions.contains(e.target)) {
         suggestions.innerHTML = '';
@@ -178,7 +193,7 @@
     });
   </script>
 
-  <!-- GitHub link at the bottom-right -->
+  <!-- GitHub link at bottom-right -->
   <a id="github-link" href="https://github.com/PlouisA/MidwayLocator" target="_blank">GitHub</a>
 
 </body>
